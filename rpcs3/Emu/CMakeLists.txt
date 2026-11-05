@@ -676,6 +676,8 @@ if(TARGET 3rdparty_vulkan)
         # in our own present path -- the earlier implementation lived behind a dlopen'd .so with
         # its own VkDevice, which forced every frame through an AHardwareBuffer round-trip.
         RSX/VK/FrameGen/FrameGen.cpp
+        RSX/VK/FrameGen/WinFgAdapter.cpp
+        RSX/VK/FrameGen/WinFgEngine.cpp
         RSX/VK/FrameGen/FrameGenPacer.cpp
         RSX/VK/FrameGen/LosslessDll.cpp
         RSX/VK/FrameGen/LsfgAlpha.cpp

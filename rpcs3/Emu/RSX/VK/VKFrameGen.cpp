@@ -14,6 +14,7 @@
 #include <map>
 #include <mutex>
 #include "FrameGen/FrameGen.h"
+#include "FrameGen/WinFgAdapter.h"
 #include "FrameGen/LsfgVkCompat.h"
 #include "FrameGen/LosslessDll.h"
 #include <vk_mem_alloc.h>
@@ -336,13 +337,13 @@ namespace vk::frame_gen
 	bool available()
 	{
 		std::call_once(g_load_once, load_library);
-		return g_api.ok;
+		return true; // win-fg va compilado dentro, no depende de la .so
 	}
 
 	std::string unavailable_reason()
 	{
 		std::call_once(g_load_once, load_library);
-		return g_api.ok ? std::string{} : g_api.failure;
+		return std::string{};
 	}
 
 	bool initialize(u64 device_uuid, bool is_hdr, f32 flow_scale, u32 generated_frames,
@@ -761,7 +762,7 @@ namespace vk::frame_gen
 			VmaAllocator vma = VK_NULL_HANDLE;
 			std::unique_ptr<Vulkan::MemoryAllocator> allocator;
 			std::unique_ptr<Vulkan::Device> device;
-			std::unique_ptr<Vulkan::FrameGen> framegen;
+			std::unique_ptr<Vulkan::WinFgAdapter> framegen;
 
 			// Frame generation records into its OWN command buffer, exactly as the ARMSX2
 			// driver does, rather than borrowing the renderer's: the passes have to run after
@@ -935,9 +936,9 @@ namespace vk::frame_gen
 		{
 			switch (g_cfg.video.frame_generation)
 			{
-			case frame_generation_mode::x2: return 1;
-			case frame_generation_mode::x3: return 2;
-			case frame_generation_mode::x4: return 3;
+			case frame_generation_mode::x2:
+			case frame_generation_mode::x3:
+			case frame_generation_mode::x4: return 1;
 			default: return 0;
 			}
 		}
@@ -1061,7 +1062,7 @@ namespace vk::frame_gen
 		const bool memory_model = dev.get_vulkan_memory_model_support();
 		const bool null_descriptor = dev.get_null_descriptor_support();
 
-		if (!memory_model || !null_descriptor)
+		if (false && (!memory_model || !null_descriptor))
 		{
 			if (!s_reported)
 			{
@@ -1075,7 +1076,7 @@ namespace vk::frame_gen
 
 		const u32 want = wanted_generated_frames();
 
-		if (!want || shader_count() <= 0)
+		if (!want)
 		{
 			return false;
 		}
@@ -1274,7 +1275,7 @@ namespace vk::frame_gen
 			return 0;
 		}
 
-		return shader_count() > 0 ? wanted_generated_frames() : 0;
+		return wanted_generated_frames();
 	}
 
 	VkImage generated_image(u32 index)
@@ -1313,7 +1314,7 @@ namespace vk::frame_gen
 			return why.empty() ? std::string("LSFG: failed") : fmt::format("LSFG: failed (%s)", why);
 		}
 
-		if (shader_count() <= 0)
+		if (false)
 		{
 			using VideoCore::FrameGen::LosslessStatus;
 
@@ -1336,10 +1337,10 @@ namespace vk::frame_gen
 
 		if (const f32 fps = g_display_fps.load(); fps > 0.f)
 		{
-			return fmt::format("LSFG: %05.2f", fps);
+			return fmt::format("WinFG: %05.2f", fps);
 		}
 
-		return "LSFG: starting";
+		return "WinFG: starting";
 	}
 
 	namespace
@@ -1527,7 +1528,7 @@ namespace vk::frame_gen
 			g_native.allocator = std::make_unique<Vulkan::MemoryAllocator>(g_native.vma);
 			g_native.device = std::make_unique<Vulkan::Device>(&dev);
 
-			if (!g_native.device->IsVulkanMemoryModelSupported() || !g_native.device->HasNullDescriptor())
+			if (false)
 			{
 				framegen_log.error("Frame generation needs vulkanMemoryModel and nullDescriptor;"
 					" this device enabled neither");
@@ -1535,7 +1536,7 @@ namespace vk::frame_gen
 				return false;
 			}
 
-			g_native.framegen = std::make_unique<Vulkan::FrameGen>(*g_native.allocator, &dev);
+			g_native.framegen = std::make_unique<Vulkan::WinFgAdapter>(*g_native.allocator, &dev);
 			return true;
 		}
 	}
@@ -1633,6 +1634,15 @@ namespace vk::frame_gen
 				}
 			}
 		}
+
+		// win-fg reusa descriptor sets y UBO: si la generacion del frame anterior sigue en la GPU, se salta este frame.
+		const u32 prev_slot = (slot + native_stack::SLOTS - 1) % native_stack::SLOTS;
+		if (g_native.slot_submitted[prev_slot] && vkWaitForFences(dev, 1, &g_native.fence[prev_slot], VK_TRUE, 0ull) != VK_SUCCESS)
+		{
+			return 0;
+		}
+
+		g_native.framegen->SetSlot(slot);
 
 		vkResetCommandBuffer(g_native.cmd[slot], 0);
 
