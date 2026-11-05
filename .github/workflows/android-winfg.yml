@@ -64,7 +64,7 @@ jobs:
             bash android/configure.sh "-DARMSX3_ARM_MARCH=$MARCH" \
               -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
           export PATH="$ANDROID_HOME/cmake/$CMAKE_VERSION/bin:$PATH"
-          ninja -C /mnt/build android/libarmsx3-core.so
+          ninja -k 0 -C /mnt/build android/libarmsx3-core.so
           ninja -C /mnt/build armsx3_lsfg || echo "armsx3_lsfg no se compilo (ok: win-fg va dentro del core)"
 
       - name: Guardar ccache (aunque haya fallado o se acabe el tiempo)
